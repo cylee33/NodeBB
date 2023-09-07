@@ -26,8 +26,8 @@ function default_1(User) {
         is: (targetUid, uids) => __awaiter(this, void 0, void 0, function* () {
             const isArray = Array.isArray(uids);
             const uidsArray = isArray ? uids : [uids];
-            const blocks = yield User.blocks.list(uidsArray);
-            const isBlocked = uidsArray.map((uid, index) => blocks[index] && blocks[index].includes(parseInt(targetUid.toString(), 10)));
+            const blocks = (yield User.blocks.list(uidsArray));
+            const isBlocked = uidsArray.map((uid, index) => blocks[index].includes(parseInt(targetUid.toString(), 10)));
             return isArray ? isBlocked : isBlocked[0];
         }),
         can: (callerUid, blockerUid, blockeeUid, type) => __awaiter(this, void 0, void 0, function* () {
@@ -62,24 +62,24 @@ function default_1(User) {
                 });
             }
             const result = uidsArray.map(uid => cachedData[uid] || []);
-            return isArray ? result.slice() : result[0];
+            return isArray ? result : [result[0]]; // Always return an array of arrays.
         }),
         add: (targetUid, uid) => __awaiter(this, void 0, void 0, function* () {
             yield User.blocks.applyChecks('block', targetUid, uid);
             yield database_1.default.sortedSetAdd(`uid:${uid}:blocked_uids`, Date.now(), targetUid);
             yield User.incrementUserFieldBy(uid, 'blocksCount', 1);
-            User.blocks._cache.del(parseInt(uid, 10));
+            User.blocks._cache.del(uid.toString());
             plugins_1.default.hooks.fire('action:user.blocks.add', { uid: uid, targetUid: targetUid });
         }),
         remove: (targetUid, uid) => __awaiter(this, void 0, void 0, function* () {
             yield User.blocks.applyChecks('unblock', targetUid, uid);
             yield database_1.default.sortedSetRemove(`uid:${uid}:blocked_uids`, targetUid);
             yield User.decrementUserFieldBy(uid, 'blocksCount', 1);
-            User.blocks._cache.del(parseInt(uid, 10));
+            User.blocks._cache.del(uid.toString());
             plugins_1.default.hooks.fire('action:user.blocks.remove', { uid: uid, targetUid: targetUid });
         }),
         applyChecks: (type, targetUid, uid) => __awaiter(this, void 0, void 0, function* () {
-            yield User.blocks.can(uid, uid, targetUid);
+            yield User.blocks.can(uid, uid, targetUid, type);
             const isBlock = type === 'block';
             const is = yield User.blocks.is(targetUid, uid);
             if (is === isBlock) {
@@ -100,8 +100,12 @@ function default_1(User) {
             }
             const isPlain = typeof set[0] !== 'object';
             const blocked_uids = yield User.blocks.list(uid);
-            const blockedSet = new Set(blocked_uids);
-            const resultSet = set.filter(item => !blockedSet.has(parseInt(isPlain ? item : (item && item[property]), 10)));
+            let flat_blocked_uids = [];
+            for (let i = 0; i < blocked_uids.length; i++) {
+                flat_blocked_uids = flat_blocked_uids.concat(blocked_uids[i]);
+            }
+            const blockedSet = new Set(flat_blocked_uids);
+            const resultSet = set.filter(item => !blockedSet.has(parseInt(typeof item === 'object' ? item[property] : item, 10)));
             const data = yield plugins_1.default.hooks.fire('filter:user.blocks.filter', { set: resultSet, property: property, uid: uid, blockedSet: blockedSet });
             return data.set;
         }),
